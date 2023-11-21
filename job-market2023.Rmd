@@ -1,0 +1,212 @@
+---
+title: "English PhD job statistics, or, The worst is not / So long as we can say..."
+date: 2023-11-20
+categories:
+  - work
+output:
+    hugormd::post:
+        highlight_shortcode: false
+        transparent_plots: false
+...
+
+```{r setup, include=F, cache=F}
+library(tidyverse)
+library(readxl)
+library(knitr)
+library(ipedsr) # remotes::install_github("agoldst/ipedsr")
+opts_chunk$set(echo=F, cache=T, message=F, use_shortcode=T)
+```
+
+```{r load-ipeds}
+# institutional characteristics data
+hd <- ipeds_files("HD", "2022") |>
+    ipeds_load_series(data_dir="ipeds") # downloads the file if needed
+# completions data
+ipeds_comp <- ipeds_files("C", 2012:2022) |>
+    ipeds_load_series(data_dir="ipeds") # downloads the files if needed
+```
+
+```{r load-crosswalk}
+# humanities indicators definitions of disciplines in terms of
+# IPEDS CIP program codes
+hi_crosswalk <- "data/Degree_Program_Code_Catalog.xlsx"
+if (!file.exists(hi_crosswalk)) {
+    download.file("https://www.amacad.org/sites/default/files/media/document/2020-02/Degree_Program_Code_Catalog.xlsx",
+                  destfile=hi_crosswalk)
+}
+xw <- read_excel(hi_crosswalk, sheet=2)
+colnames(xw) <- xw[3, ]
+xw_eng <- xw |>
+    filter(`Humanities Discipline` == "English Language and Literature") |> 
+    select(CIPCODE=Code)
+```
+
+```{r load-hi-comp}
+# Humanities Indicatories Completions data for English PhDs
+# from https://www.amacad.org/humanities-indicators/higher-education/advanced-degrees-humanities
+# download is from a highcharts widget, so here's a copy
+hi_comp_eng <- read_csv("data/ii-20d-doctoral-degree-c.csv") |>
+    select(year=Category, count=`English Language & Literature`) |>
+    # judging by IPEDS figures, "2018" refers to 2017-2018 completions (etc)
+    mutate(year=as.numeric(year), type="eng_phds")
+
+hi_max_year <- max(hi_comp_eng$year)
+```
+
+```{r ipeds-comp-eng}
+# In IPEDS, year "2017" refers to 2016–2017 (etc)
+ipeds_comp_eng <- ipeds_comp |>
+    select(year, UNITID, CIPCODE, MAJORNUM, AWLEVEL, CTOTALT) |>
+    # eliminate overlap years
+    filter(year > hi_max_year) |>
+    filter(AWLEVEL == 17, MAJORNUM == 1) |>  # phds, first "major"
+    # Title IV non-profit public or private institutions only
+    semi_join(hd |> filter(PSET4FLG == 1, CONTROL %in% 1:2), by="UNITID") |> 
+    semi_join(xw_eng, by="CIPCODE") |>
+    group_by(year) |>
+    summarize(count=sum(CTOTALT), type="eng_phds")
+```
+
+```{r load-mla2020}
+# the 2019–20 report spreadsheet, for job ad totals back to 1975–76
+mla20file <- "data/Data-Job-List-2019-20.xlsx"
+if (!file.exists(mla20file)) {
+    download.file("https://www.mla.org/content/download/160729/file/Data-Job-List-2019-20.xlsx",
+                  destfile=mla20file)
+}
+
+mla_allpos <- read_excel(mla20file, sheet=1, n_max=1, skip=2) |>
+    select(-Year) |>
+    pivot_longer(everything(), names_to="year", values_to="count") |>
+    # to match IPEDS, represent 2019-2020 as "2020" (etc)
+    mutate(year=as.numeric(str_sub(year, 1, 4)) + 1) |>
+    # manually add totals from 2020-2022 report, figure 1
+    # which do not match the totals in table 1, but what do I know
+    add_row(year=2021, count=510) |>
+    add_row(year=2022, count=921) |>
+    mutate(type="all_pos")
+```
+
+```{r load-mla2022}
+# Excel extracted from most recent MLA job list report pdf 
+mla <- read_excel("data/mla-joblist-report2020-2022tab1.xlsx") |>
+    rename(rank=...1) |>
+    filter(!is.na(rank)) |>
+    pivot_longer(-rank, names_to="year", values_to="count") |>
+    # to match IPEDS, represent 2021-2022 as "2021" (etc)
+    mutate(year=as.numeric(str_sub(year, 1, 4)) + 1) |>
+    replace_na(list(count=0))
+
+mla_counts <- mla |> mutate(
+    asst=rank %in% c(
+        "Assistant professor",
+        "Assistant professor or associate professor",
+        "Assistant professor, associate professor, or professor",
+        "Instructor or assistant professor",
+        "Other combinations including assistant professor"),
+    ttt=asst | rank %in% c(
+        "Associate professor",
+        "Associate professor or professor",
+        "Professor")
+    ) |>
+    group_by(year) |>
+    summarize(asst_ads=sum(asst * count),
+              ttt_ads=sum(ttt * count),
+              all_ads=count[rank == "Total"],
+              .groups="drop") |>
+    pivot_longer(-year, names_to="type", values_to="count")
+```
+
+```{r compute-doom}
+doom <- bind_rows(mla_allpos, mla_counts, hi_comp_eng, ipeds_comp_eng)
+
+max_year <- max(doom$year)
+```
+
+```{r doom}
+doom_labels <- c("new positions", "new TT positions", "new PhDs")
+doom |>
+    filter(type %in% c("all_pos", "asst_ads", "eng_phds")) |>
+    mutate(type=fct_recode(type, "new positions"="all_pos",
+                           "new TT positions"="asst_ads",
+                           "new PhDs"="eng_phds")) |>
+    mutate(type=fct_reorder2(type, year, count)) |>
+    ggplot(aes(year, count, color=type, linetype=type)) +
+        geom_line() +
+        scale_x_continuous(labels=\(y) str_c(y - 1, "–", y),
+                           guide=guide_axis(angle = 90),
+                           n.breaks=10) +
+        ylim(0, 2250) +
+        scale_color_manual(values=c("new positions"="black",
+                                    "new TT positions"="black",
+                                    "new PhDs"="blue")) +
+        scale_linetype_manual(values=c("new positions"="dashed",
+                                       "new TT positions"="solid",
+                                       "new PhDs"="solid")) +
+        guides(color=guide_legend(""), linetype=guide_legend("")) +
+        geom_vline(xintercept=c(2009, 2021),linetype="dotted") +
+        labs(title="PhDs and Academic Job Openings in English",
+             caption=str_wrap("New PhDs and new positions advertised in English language and literature, across all ranks and tenure statuses (dashed) and for assisted professors (solid). The vertical lines mark the 2008–2009 and 2020–2021 crises. N.B. The all-ranks job ads counts are consistently larger than the totals for the data for individual ranks. Chart by Andrew Goldstone from IPEDS, Humanities Indicators, and MLA data, November, 2023. https://andrewgoldstone.com/blog/job-market2023."))
+
+```
+
+
+It's been a while since I checked in on the statistics for what is laughingly called "the job market" in English for PhDs. But after a few demoralizing conversations with people looking at the thing from various angles (I was the one doing the demoralizing), I realized I wanted an updated version of a chart I last [made in 2017](/blog/job-market2017), comparing new English PhDs and new faculty job openings. There was a pandemic in the interim.
+
+In the figure, the blue line traces the number of new PhDs in English language and literature and closely related fields in the US. The solid black line traces the number of tenure-track job openings in English advertised on the MLA Job List; the dashed black line gives the total of all English job openings, tenure-track, tenured, and non-.[^data]
+The MLA job list is no longer quite as comprehensive as it was in better days for the profession, but I believe most TT positions are still advertised there. Over time a greater proportion of non-TT jobs have been advertised on the list. The actual proportion of such openings is increasing; so is the tendency to advertise such openings in the same venue as the TT jobs.
+
+[^data]: I have used the American Academy's [Humanities Indicator II-20d](https://www.amacad.org/humanities-indicators/higher-education/advanced-degrees-humanities#32079) for PhDs through `r hi_max_year`, and then used their definition of "English Language & Literature" fields (which includes rhet-comp) to carry the series forward using [IPEDS data](https://nces.ed.gov/ipeds/datacenter/). I couldn't exactly reproduce the Humanities Indicator numbers for earlier years, probably because of differences in which institutions I am including (for years after `r hi_max_year` I use all Title IV public or private non-profit institutions). The mismatch is never more than 1%. My [source code](https://github.com/agoldst/job-market2023) shows the details. I didn't have it in me to figure out how to get PhD completion data for the years before `r min(hi_comp_eng$year)`.
+
+    For positions advertised, I combine information in two MLA reports. The most recent report, on the [MLA Job List 2020–22](https://www.mla.org/content/download/191179/file/Job-List-Report-20-22.pdf), includes a table of ads by rank going back to 2001--2002. For the "TT" count I use the number of positions for assistant professors alone or in combination with other ranks. The brief interlude when MLA shared Job List data in machine-readable form appears to be over, so I had to extract the table from the report PDF and massage it a bit in Excel to make the chart. You can download my Excel file [here](/blog/job-market2023/data/mla-joblist-report2020-2022tab1.xlsx). For the job ads before `r min(mla_counts$year)`, I have used the lovely Excel sheet supplied as the [2019–2020 report](https://www.mla.org/content/download/160729/file/Data-Job-List-2019-20.xlsx). There is a discrepancy between MLA's series of all positions advertised in English and their series broken out by rank; the former count (in both the 2019–2020 spreadsheet and in Figure 1 of the 2020–2022 report) is consistently higher that the totals of the latter; for example, the report text mentions 921 positions in English in 2021–22, but the corresponding column in Table 1, which appears to summarize all ads in English, totals 806. There is no explanation that I can find, but I use the higher figure for the "total positions" numbers. 
+
+For most of my career---I finished grad school in 2009---this comparison has shown that the number of new PhDs was increasing every year even as the number of job openings plummeted. Now, however, the PhD "class" is shrinking. We are well past the last decade's peak in English PhD production, despite a recent uptick from the pandemic low. 
+
+Job openings also rebounded after the pandemic, returning to pre-pandemic levels. Hopefully few people entertain any illusions about what we have returned to: the pre-pandemic levels were terrible. I am grimly pleased to see that the [MLA report](https://www.mla.org/content/download/191179/file/Job-List-Report-20-22.pdf) does not beat around the bush:
+
+> Despite this rebound [in openings], the current number of jobs and the consistent decline of tenure-track jobs year over year reflect the continuing erosion of job security and academic freedom, whether through the removal of tenure lines through slow attrition or outright legislative attempts to remove tenure. (2)
+
+The post-pandemic rebound in job openings is nonetheless different from the rebound that followed the financial crisis in 2008–2009. The financial crisis occasioned a permanent shrinkage in the supply of openings in English, TT and otherwise: after the crash, a brief recovery was immediately reversed. I expected a similar development in the last few years, but, surprisingly, the recovery in job ads to the pre-pandemic level is, for the moment, complete---such as it is. For `r max_year`, the last year in the data, we have `r ipeds_comp_eng |> filter(year == max_year) |> pull(count)` new English PhDs and `r doom |> filter(year == max_year, type == "all_pos") |> pull(count)` jobs advertised in English, of which `r doom |> filter(year == max_year, type == "asst_ads") |> pull(count)` were for assistant professorships.^[Again I am using the higher figure from MLA for all positions.]
+By comparison, in the early 2000s there was some semblance of equilibrium for English PhDs, with almost equal numbers of assistant professor openings and new PhDs.
+
+If I had to force myself to say something optimistic about all this, I guess I would remark that the more recent rebound indicates the effectiveness of increasing public support for universities at changing the job market for PhDs. The very large federal pandemic stimulus to higher education, by contrast with the extreme austerity of the post-2009 years, is surely the reason English departments were allowed to resume the hiring rates of the late 2010s. So just imagine what _expanding_ public support over the long term might do...if you can imagine.[^newfield]
+
+[^newfield]: Last year Chris Newfield, surveying the numbers, expressed a less cynical but still lucid view in one of his columns as MLA president: ["The Perpetual Job Crisis needs a National Strategy."](https://president.mla.hcommons.org/2022/11/16/the-perpetual-job-crisis-needs-a-national-strategy/).
+
+    > We have tried to respond. We have shrunk our PhD programs and have encouraged our remaining students to consider nonacademic work. The shrinkage has not ended job shortfalls and has arguably encouraged them by showing we can always “do more with less.” Alt-ac policy looks for help in sectors that are often as precarious as our own. Graduate students have struggled to improve their working conditions through unionization campaigns across the country but obviously shouldn’t be asked to fix the overall job picture.
+
+    Faculty members have helped individual job candidates, but we have not fought a national campaign to get the higher ed sector to hire the right number of literary and language scholars with the right proportions of tenure.
+
+    I agree, but where is the organizational wherewithal to carry that strategy forward? Not, so far as I can tell, with the post-Newfield MLA.
+
+More soberly, we can note that the level of new PhDs is approaching closer to the level of all new openings than at any time since the pre-crash decade. Perhaps a painful "adjustment" is being accomplished in which the shrinkage of PhD programs proceeds faster than the shrinkage of the profession, until something like a new equilibrium of academic job-seekers and positions is found.
+
+But of course the total number of openings does not tell the whole story of what is going on. Compare the situation in 2007 to that in `r max_year`.
+
+```{r}
+doom |> filter(year %in% c(2008, max_year)) |>
+    filter(type %in% c("all_pos", "asst_ads", "eng_phds")) |>
+    pivot_wider(names_from=type, values_from=count) |>
+    knitr::kable(col.names=c("year", "all positions", "TT positions", "new English PhDs"))
+```
+
+The decline of the tenure track is not being reversed. Last year, there were 4 new openings for every 5 new PhDs, but only about 2 of those 4 were assistant professorships. Since a comparable or worse situation has obtained for some time, there was also an unknown number of job-seekers with PhDs from earlier years.^[One used to hear a charming story that PhDs would pass through "stepping stone" postdoctoral fellowship positions before achieve the bliss of the tenure track. Postdocs advertised on the MLA list have remained between 50 and 60 total positions since the data for this rank begins in 2013–2014.]
+The MLA job list was more or less 50% non-tenure-track, in one form or another. Even this is not an adequate measure of casualization in the profession; part-time jobs are almost never advertised on the MLA (my [modest proposal](/blog/job-market2017) to require this of ADE/ADFL departments has been inexplicably neglected by the organization's leadership), but they are the [largest single category](/blog/ru-casual2022) of university instructors across all disciplines, and probably even more so in English. And the MLA job list probably still captures fewer full-time NTT openings than TT ones. I would suppose that there was a pre-pandemic "equilibrium" as well, not visible on the chart, in which most of the "excess" job-seekers were indeed finding academic positions---but contingent ones, not reflected in the MLA Job List statistics.
+
+For years it has been obvious that only an attempt to follow a series of cohorts of humanities PhDs would reveal what is happening to the many people who are trained for jobs as scholar-teachers and then deprived of the chance to do those jobs. I am unaware of any such study, and, cynically, I feel that our professional ignorance serves the purposes of denial very well. So does "sky-is-falling" apocalypticism, which invites the same passivity as the many wishful celebrations of the new life ~~in the offworld colonies~~ in "alternative careers." The best information about English PhD career paths that I have found comes from a 2018 [MLA report](https://www.mla.org/content/download/99761/file/Survey-of-PhD-Recipients-2017.pdf) and David Laurence's accompanying [blog post](https://mlaresearch.mla.hcommons.org/2018/08/28/more-on-the-career-paths-of-phds-in-english-and-other-modern-languages/), which give some information on the careers of a small sample of people who earned English and modern language PhDs from 1996 to 2015.^[Given the response rate of 15.4%, I would imagine some response bias in favor of people with secure academic careers, but there is no way to know without further studies.]
+The most striking aspect of this study was the contrasts among cohorts. I reproduce Figure 7 from the report:
+
+{{< figure imgclass="img-padded" width="100%" link="https://mlaresearch.mla.hcommons.org/2018/08/28/more-on-the-career-paths-of-phds-in-english-and-other-modern-languages/" src="/blog/job-market2023/data/Fig2.2017FollowUpSurvey.jpg" >}}
+
+
+Among the PhDs from 2006–2008, 71.4% were in T/TT positions in 2017; 39.1% of the PhDs from 2009–2015 were, with a far larger proportion (30.4%) in non-tenure-track faculty positions than any other cohort studied. As for non-academic work, that latest cohort was indeed characterized by a higher proportion in such jobs (26.1%) than any cohort except the group from 1996–1998, but the principal alternative to tenure-track employment for PhDs in English and other modern languages is non-tenure-track faculty teaching.^[More broadly, the Humanities Indicators [report](https://www.amacad.org/humanities-indicators/workforce/occupations-humanities-phds#31688) that humanities PhDs were predominantly employed in post-secondary teaching as of 2019 (61%). That includes PhDs across all humanities fields and from all cohorts, but it still makes a marked contrast with non-humanities PhDs.]
+
+This is not a picture of a scholarly profession in recovery. It is a picture of a profession that has undergone a serious degradation in working conditions. This is not just a matter of things carrying on as they always have, except a bit crappier---though this is indeed how tenured professors like me experience it most of the time. Rather, it represents a mortal threat to the reproduction of scholarship itself, because the TT jobs that leave room for serious research---which is, after all, what a PhD is supposed to train you to do---are dwindling. No salvation will be found outside the university, even if a full 25% of English PhDs go on to gloriously satisfying non-academic work. What we are "recovering" into, insofar as we are recovering, is a service discipline of ever-more-overworked teachers.^[Doubtless this transformation is compatible with the continuation of research at the richest private institutions, and perhaps a few token public flagships, although Rutgers's central management appears hellbent on eviscerating graduate programs. The latest indignity is the reduction of the grad school's funding for graduate travel to conferences or archives to \$0.]
+
+No rational person could consider the slaughterhouse of talent that is the "job market" in English without wondering whether PhD programs ought to reduce their own size out of basic decency to their current and future students. The problem with this idea is that there is no obvious way to maintain hiring at any given level while drawing down PhD program size---even if graduate faculty egos could withstand the prospect of fewer students and fewer graduate courses. Instead, shrinking graduate programs are a ripe target for administrators looking to shed faculty lines (usually by the gentle method known as "attrition"). When Harvard, Yale, Princeton, and Stanford take the first step into this vicious circle, perhaps others will follow. I suppose I don't know that they haven't already.
+
+In the meantime it is hard to summon the optimism of the will. A Democratic Congress with a strong left wing could conceivably pass a College For All bill that would pick up where the pandemic stimulus left off and deliver a transformed higher education labor landscape. Sure. It could happen. Meanwhile the _New York Times_ wants me to click on an op-ed called "Should Joe Manchin run for president?"
+
+Locally, as ever, the best hope for decent conditions for the people who teach and do research in colleges and universities lies with strong, combative unions, organizing across instructional and research workers of all ranks in the name of academic freedom and the public good. Yet---and I say this from a campus where the faculty and grad students recently carried off a successful strike---converting decent working conditions into a revival for the scholarly profession is another matter. It will require a struggle at the level of individual departments, perhaps against resistance from colleagues in other disciplines competing for scarce resources as well as against university management. In the meantime, the default choice, passivity and routine---let's just get through the next semester, the next year, the next generation of young we can devour---leads only to further decline.
+
+_Source code and data for this post are available at [github.com/agoldst/job-market2023](https://github.com/agoldst/job-market2023). It uses two hacked-together packages of my own, [ipedsr](https://github.com/agoldst/ipedsr) and [hugormd](https://github.com/agoldst/hugormd)._
