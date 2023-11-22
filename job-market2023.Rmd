@@ -125,7 +125,7 @@ max_year <- max(doom$year)
 
 ```{r doom}
 doom_labels <- c("new positions", "new TT positions", "new PhDs")
-doom |>
+doom_plot <- doom |>
     filter(type %in% c("all_pos", "asst_ads", "eng_phds")) |>
     mutate(type=fct_recode(type, "new positions"="all_pos",
                            "new TT positions"="asst_ads",
@@ -148,6 +148,7 @@ doom |>
         labs(title="PhDs and Academic Job Openings in English",
              caption=str_wrap("New PhDs and new positions advertised in English language and literature, across all ranks and tenure statuses (dashed) and for assisted professors (solid). The vertical lines mark the 2008–2009 and 2020–2021 crises. N.B. The all-ranks job ads counts are consistently larger than the totals for the data for individual ranks. Chart by Andrew Goldstone from IPEDS, Humanities Indicators, and MLA data, November, 2023. https://andrewgoldstone.com/blog/job-market2023."))
 
+doom_plot
 ```
 
 It's been a while since I checked in on the statistics for what is laughingly called "the job market" in English for PhDs. But after a few demoralizing conversations with people looking at the thing from various angles (I was the one doing the demoralizing), I realized I wanted an updated version of a chart I last [made in 2017](/blog/job-market2017), comparing new English PhDs and new faculty job openings. There was a pandemic in the interim.
@@ -159,7 +160,14 @@ The MLA job list is no longer quite as comprehensive as it was in better days fo
 
     For positions advertised, I combine information in two MLA reports. The most recent report, on the [MLA Job List 2020–22](https://www.mla.org/content/download/191179/file/Job-List-Report-20-22.pdf), includes a table of ads by rank going back to 2001--2002. For the "TT" count I use the number of positions for assistant professors alone or in combination with other ranks. The brief interlude when MLA shared Job List data in machine-readable form appears to be over, so I had to extract the table from the report PDF and massage it a bit in Excel to make the chart. You can download my Excel file [here](/blog/job-market2023/data/mla-joblist-report2020-2022tab1.xlsx). For the job ads before `r min(mla_counts$year)`, I have used the lovely Excel sheet supplied as the [2019–2020 report](https://www.mla.org/content/download/160729/file/Data-Job-List-2019-20.xlsx). There is a discrepancy between MLA's series of all positions advertised in English and their series broken out by rank; the former count (in both the 2019–2020 spreadsheet and in Figure 1 of the 2020–2022 report) is consistently higher that the totals of the latter; for example, the report text mentions 921 positions in English in 2021–22, but the corresponding column in Table 1, which appears to summarize all ads in English, totals 806. There is no explanation that I can find, but I use the higher figure for the "total positions" numbers. 
 
-For most of my career---I finished grad school in 2009---this comparison has shown that the number of new PhDs was increasing every year even as the number of job openings plummeted. Now, however, the PhD "class" is shrinking. We are well past the last decade's peak in English PhD production, despite a recent uptick from the pandemic low. 
+For most of my career---I finished grad school in 2009---this comparison has shown that the number of new PhDs was increasing every year even as the number of job openings plummeted. Now, however, the PhD "class" is shrinking. We are well past the last decade's peak in English PhD production, despite a recent uptick from the pandemic low. This shift is easier to see if we zoom in on the most recent two decades:
+
+```{r doom-zoom}
+doom_plot + xlim(max_year - 20, max_year) +
+        labs(title="The Last 20 Years of PhDs and Academic Job Openings in English ",
+             caption=str_wrap("New PhDs and new positions advertised in English language and literature, across all ranks and tenure statuses (dashed) and for assisted professors (solid). The vertical lines mark the 2008–2009 and 2020–2021 crises. N.B. The all-ranks job ads counts are consistently larger than the totals for the data for individual ranks. Chart by Andrew Goldstone from IPEDS, Humanities Indicators, and MLA data, November, 2023. https://andrewgoldstone.com/blog/job-market2023."))
+
+```
 
 Job openings also rebounded after the pandemic, returning to pre-pandemic levels. Hopefully few people entertain any illusions about what we have returned to: the pre-pandemic levels were terrible. I am grimly pleased to see that the [MLA report](https://www.mla.org/content/download/191179/file/Job-List-Report-20-22.pdf) does not beat around the bush:
 
