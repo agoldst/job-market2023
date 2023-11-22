@@ -150,7 +150,6 @@ doom |>
 
 ```
 
-
 It's been a while since I checked in on the statistics for what is laughingly called "the job market" in English for PhDs. But after a few demoralizing conversations with people looking at the thing from various angles (I was the one doing the demoralizing), I realized I wanted an updated version of a chart I last [made in 2017](/blog/job-market2017), comparing new English PhDs and new faculty job openings. There was a pandemic in the interim.
 
 In the figure, the blue line traces the number of new PhDs in English language and literature and closely related fields in the US. The solid black line traces the number of tenure-track job openings in English advertised on the MLA Job List; the dashed black line gives the total of all English job openings, tenure-track, tenured, and non-.[^data]
@@ -174,14 +173,14 @@ If I had to force myself to say something optimistic about all this, I guess I w
 [^newfield]: Last year Chris Newfield, surveying the numbers, expressed a less cynical but still lucid view in one of his columns as MLA president: ["The Perpetual Job Crisis needs a National Strategy."](https://president.mla.hcommons.org/2022/11/16/the-perpetual-job-crisis-needs-a-national-strategy/).
 
     > We have tried to respond. We have shrunk our PhD programs and have encouraged our remaining students to consider nonacademic work. The shrinkage has not ended job shortfalls and has arguably encouraged them by showing we can always “do more with less.” Alt-ac policy looks for help in sectors that are often as precarious as our own. Graduate students have struggled to improve their working conditions through unionization campaigns across the country but obviously shouldn’t be asked to fix the overall job picture.
-
-    Faculty members have helped individual job candidates, but we have not fought a national campaign to get the higher ed sector to hire the right number of literary and language scholars with the right proportions of tenure.
+    >
+    > Faculty members have helped individual job candidates, but we have not fought a national campaign to get the higher ed sector to hire the right number of literary and language scholars with the right proportions of tenure.
 
     I agree, but where is the organizational wherewithal to carry that strategy forward? Not, so far as I can tell, with the post-Newfield MLA.
 
 More soberly, we can note that the level of new PhDs is approaching closer to the level of all new openings than at any time since the pre-crash decade. Perhaps a painful "adjustment" is being accomplished in which the shrinkage of PhD programs proceeds faster than the shrinkage of the profession, until something like a new equilibrium of academic job-seekers and positions is found.
 
-But of course the total number of openings does not tell the whole story of what is going on. Compare the situation in 2007 to that in `r max_year`.
+But of course the total number of openings does not tell the whole story of what is going on. Compare the situation in 2007–2008 to that in 2021–2022:
 
 ```{r}
 doom |> filter(year %in% c(2008, max_year)) |>
